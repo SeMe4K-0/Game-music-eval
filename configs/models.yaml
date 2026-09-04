@@ -98,6 +98,10 @@ models:
     # 3.5B параметров в bf16 ≈ 7 ГБ весов — близко к 12 ГБ с активациями;
     # если фаза 0 покажет OOM, включить cpu_offload=true (штатная опция).
     cpu_offload: false
+    # Локальная папка весов (README, шаг 2 фазы 0). Путь обязан быть ASCII и на
+    # диске с запасом: дефолт пайплайна (~/.cache/ace-step) на этой машине
+    # упирается в кириллицу в имени профиля и в нехватку места на C:.
+    checkpoint_dir: D:/ace-step-checkpoints
     vram_estimate_gb: 8
     dtype: bfloat16          # родной дефолт ACE-Step; требует Ampere+ (не T4/P100)
     backend: ace_step
