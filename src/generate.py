@@ -82,6 +82,22 @@ class MusicGenBackend:
             cfg["hf_repo"], torch_dtype=_dtype(cfg)).to(self.device)
         self.sr = int(self.model.config.audio_encoder.sampling_rate)
         self.tps = int(cfg.get("tokens_per_second", 50))
+        self.dtype = _dtype(cfg)
+
+    def _to_model(self, inputs):
+        """Фаза 0 (2026-09-04, transformers 4.50.0): у continuation-вызова
+        `processor(audio=...)` отдаёт `input_values` во float32 независимо от
+        точности модели, а `BatchEncoding.to(device)` тип не приводит. Свёртка
+        энкодера EnCodec в fp16 падает на float32-входе ("Input type (float)
+        and bias type (struct c10::Half) should be the same"). Приводим только
+        вещественные тензоры: `input_ids`/`padding_mask` обязаны остаться
+        целочисленными. Точность модели при этом остаётся ровно той, что
+        прибита в configs/models.yaml."""
+        inputs = inputs.to(self.device)
+        for k, v in inputs.items():
+            if hasattr(v, "is_floating_point") and v.is_floating_point():
+                inputs[k] = v.to(self.dtype)
+        return inputs
 
     def _gen(self, inputs, seconds: float):
         import torch
@@ -97,14 +113,14 @@ class MusicGenBackend:
         prompt_s = float(self.cfg.get("continuation_prompt_s", 10))
         sr = self.sr
 
-        inputs = self.processor(text=[prompt], padding=True, return_tensors="pt").to(self.device)
+        inputs = self._to_model(self.processor(text=[prompt], padding=True, return_tensors="pt"))
         audio = self._gen(inputs, min(duration_s, native))
 
         while len(audio) / sr < duration_s - 0.05:
             tail = audio[-int(prompt_s * sr):]
             new_s = min(native - prompt_s, duration_s - len(audio) / sr)
-            inputs = self.processor(audio=tail, sampling_rate=sr, text=[prompt],
-                                    padding=True, return_tensors="pt").to(self.device)
+            inputs = self._to_model(self.processor(audio=tail, sampling_rate=sr, text=[prompt],
+                                                   padding=True, return_tensors="pt"))
             gen = self._gen(inputs, new_s)
             # transformers возвращает промпт + продолжение; если длина выхода
             # заметно больше запрошенного нового куска — отрезаем промпт.

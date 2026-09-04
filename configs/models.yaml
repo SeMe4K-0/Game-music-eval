@@ -60,6 +60,7 @@ models:
     # двумя PromptInput с общим seed-image (og_beat) — цепочка img2img-клипов.
     long_duration_strategy: seed_image_alpha_chain
     seed_image_id: og_beat
+    seed_image_path: seed_images/og_beat.png
     num_inference_steps: 50
     denoising: 0.75
     guidance: 7.0

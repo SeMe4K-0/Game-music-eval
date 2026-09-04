@@ -16,9 +16,13 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
+.venv-*/
 venv/
 env/
 *.egg-info/
+
+# Логи прогонов фазы 0 и генерации (сами результаты — в results/)
+*.log
 
 # Окружение и редакторы
 .DS_Store
