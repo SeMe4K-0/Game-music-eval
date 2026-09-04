@@ -1,0 +1,27 @@
+# Результаты прогонов: аудио (до 85 ГБ на полный план), метрики, эмбеддинги,
+# сводные таблицы. Всё воспроизводится кодом и конфигами, в репозитории не нужно.
+results/
+*.tar.gz
+
+# Референсный корпус и веса моделей — качаются отдельно (см. docs/corpus.md)
+data/
+NES-VMDB/
+*.wav
+*.flac
+*.mp3
+*.mid
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Окружение и редакторы
+.DS_Store
+.ipynb_checkpoints/
+.vscode/
+.idea/

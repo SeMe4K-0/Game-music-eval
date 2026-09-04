@@ -1,0 +1,40 @@
+# Фиксированный набор игровых жанровых промптов.
+# Публикуется вместе со статьёй как приложение (полный список = воспроизводимость).
+# Категории покрывают типичные игровые музыкальные роли, а не жанры общего
+# назначения (см. обоснование в docs/experiment_design.md).
+# loop_eval: false — промпт участвует в CLAP/FAD/KAD, но исключён из шовных и
+# тактовых условий решающего правила (стингер не зацикливается по определению).
+
+prompts:
+  - id: boss_battle
+    text: "intense chiptune boss battle theme, driving bassline, urgent melody, 8-bit"
+    category: combat
+
+  - id: regular_battle
+    text: "upbeat 8-bit action battle theme, fast arpeggios, retro video game combat music"
+    category: combat
+
+  - id: ambient_exploration
+    text: "calm ambient exploration theme for a video game overworld, chiptune, sparse melody"
+    category: exploration
+
+  - id: peaceful_overworld
+    text: "peaceful overworld theme, bright chiptune melody, looping video game music"
+    category: exploration
+
+  - id: village_town
+    text: "cheerful village town theme, cozy chiptune music, friendly video game atmosphere"
+    category: location
+
+  - id: dungeon_danger
+    text: "dark dungeon danger theme, tense low chiptune drone, video game suspense music"
+    category: location
+
+  - id: victory_fanfare
+    text: "short triumphant victory fanfare, chiptune, video game level complete jingle"
+    category: stinger
+    loop_eval: false   # стингер по определению не зацикливается — вне шовных/тактовых условий
+
+  - id: final_boss_hybrid
+    text: "epic final boss theme, orchestral chiptune hybrid, driving retro video game music"
+    category: combat

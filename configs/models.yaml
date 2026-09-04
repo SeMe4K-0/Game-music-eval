@@ -1,0 +1,102 @@
+# Реестр моделей эксперимента. Источники проверки — docs/model_specs.md.
+#
+# dtype ПРИБИТ и одинаков на всех площадках. Молчаливое понижение точности на
+# железе без bfloat16 (T4/P100/M4000 — bf16 только с Ampere, sm_80) сделало бы
+# точность скрытым фактором, спутанным с моделью, поэтому src/env_info.py
+# падает с ошибкой вместо подмены. Следствие: ace_step (bfloat16, родной
+# дефолт модели) генерируется только на Ampere и новее — RTX 3060, L4, A100;
+# на Kaggle/Colab T4 он недоступен. Остальные четыре модели — float16, идут
+# везде. Смена dtype требует перегенерации всех клеток этой модели.
+# VRAM — оценки по вторичным источникам; фаза 0 обязана записать реальный пик
+# (src/generate.py::profile_vram) в generation_manifest.jsonl.
+
+models:
+  - id: musicgen_small
+    hf_repo: facebook/musicgen-small
+    year: 2023
+    architecture: autoregressive_transformer_encodec
+    license: CC-BY-NC-4.0
+    sample_rate: 32000
+    channels: 1
+    # Жёсткий лимит позиционных эмбеддингов: 30 с (1503 токена) на ВСЁ окно,
+    # включая аудио-промпт при continuation. Поэтому >30 с — только цепочкой
+    # continuation: промпт 10 с + 20 с нового на шаг.
+    native_max_duration_s: 30
+    long_duration_strategy: audio_continuation_chain
+    continuation_prompt_s: 10
+    tokens_per_second: 50
+    vram_estimate_gb: 3
+    dtype: float16
+    backend: transformers_musicgen
+
+  - id: audioldm2_music
+    hf_repo: cvssp/audioldm2-music
+    year: 2023
+    architecture: latent_diffusion_unet
+    license: CC-BY-NC-SA-4.0
+    sample_rate: 16000
+    channels: 1
+    native_max_duration_s: 10
+    # Прямой вызов с audio_length_in_s > 10: модель экстраполирует за пределы
+    # обучающей длины. РИСК фазы 0: внимание UNet по латенту 120 с может не
+    # уложиться в 12 ГБ — проверить на D=120 первым делом; при OOM переключить
+    # на chunk-стратегию (latent_chunking) и зафиксировать это в manifest.
+    long_duration_strategy: direct_long_call
+    num_inference_steps: 200
+    vram_estimate_gb: 8
+    dtype: float16
+    backend: diffusers_audioldm2
+
+  - id: riffusion_v1
+    hf_repo: riffusion/riffusion-model-v1
+    year: 2022
+    architecture: spectrogram_diffusion_sd15
+    license: CreativeML-OpenRAIL-M
+    sample_rate: 44100          # SpectrogramParams.sample_rate по умолчанию
+    effective_bandwidth_hz: 10000   # max_frequency=10000 в SpectrogramParams: выше 10 кГц энергии нет
+    channels: 1
+    native_max_duration_s: 5.12  # 512 px × 10 мс
+    # Канонический способ длинной генерации: интерполяция (alpha 0->1) между
+    # двумя PromptInput с общим seed-image (og_beat) — цепочка img2img-клипов.
+    long_duration_strategy: seed_image_alpha_chain
+    seed_image_id: og_beat
+    num_inference_steps: 50
+    denoising: 0.75
+    guidance: 7.0
+    vram_estimate_gb: 5
+    dtype: float16
+    backend: riffusion
+
+  - id: stable_audio_open_1_0
+    hf_repo: stabilityai/stable-audio-open-1.0
+    year: 2024
+    architecture: dit_latent_diffusion
+    license: Stability-AI-Community-License
+    sample_rate: 44100
+    channels: 2
+    native_max_duration_s: 47
+    # У модели нет канонического механизма продолжения в diffusers; клетки
+    # D > 47 с помечаются как NOT_APPLICABLE и не генерируются. Это результат
+    # ("нативный максимум ниже верхней границы игрового окна"), а не пропуск.
+    long_duration_strategy: not_applicable_above_native
+    num_inference_steps: 100
+    vram_estimate_gb: 9
+    dtype: float16
+    backend: diffusers_stable_audio
+
+  - id: ace_step_v1_3_5b
+    hf_repo: ACE-Step/ACE-Step-v1-3.5B
+    year: 2025
+    architecture: dcae_diffusion_linear_transformer_repa
+    license: Apache-2.0
+    sample_rate: 48000
+    channels: 2
+    native_max_duration_s: 240
+    long_duration_strategy: direct_call
+    infer_step: 27
+    # 3.5B параметров в bf16 ≈ 7 ГБ весов — близко к 12 ГБ с активациями;
+    # если фаза 0 покажет OOM, включить cpu_offload=true (штатная опция).
+    cpu_offload: false
+    vram_estimate_gb: 8
+    dtype: bfloat16          # родной дефолт ACE-Step; требует Ampere+ (не T4/P100)
+    backend: ace_step

@@ -1,0 +1,22 @@
+# Ядро DSP/анализа (работает и на MacBook без CUDA — используется для метрик
+# групп 3-4 и для смоук-тестов).
+numpy
+scipy
+librosa
+soundfile
+pandas
+pyyaml
+
+# Генерация и метрики групп 1-2 — требуют CUDA (RTX 3060), ставятся отдельно
+# на генерирующей машине:
+# torch (с CUDA)
+# torchaudio
+# transformers>=4.45   # MusicGen, AudioLDM2/пайплайны через diffusers, EnCodec, CLAP
+# diffusers>=0.30       # AudioLDM2Pipeline, StableAudioPipeline
+# audiocraft             # опционально, как альтернативный бэкенд MusicGen
+# fadtk                  # https://github.com/microsoft/fadtk — FAD, FAD-inf
+# kadtk                  # https://github.com/YoonjinXD/kadtk — KAD
+# riffusion-hobby         # https://github.com/riffusion/riffusion-hobby
+# ace-step (см. https://github.com/ace-step/ACE-Step, установка из исходников)
+
+pytest
