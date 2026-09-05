@@ -81,7 +81,9 @@ def run(out_dir: Path, config_dir: Path, embedder: str, n_resamples: int, crossc
         if (mid, D, k) in done or D not in ref_ctx:
             continue
         log.info("набор %s D=%.0f set=%d: %d файлов", mid, D, k, len(files))
-        embs = dm.embed_files(sorted(files), embedder)
+        # cached: треки с площадки без вывода аудио считаются по привезённым
+        # эмбеддингам — самого аудио для них уже нет (remote_worker).
+        embs = dm.embed_files_cached(sorted(files), out_dir, embedder)
         res = dm.evaluate_set(ref_ctx[D], embs, n_resamples, seed=k)
         rec = {"model_id": mid, "duration_s": D, "set_idx": k, "embedder": embedder,
                "fad": res.fad, "kad": res.kad, "fad_boot": res.fad_boot, "kad_boot": res.kad_boot,

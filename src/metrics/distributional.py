@@ -73,6 +73,63 @@ def embed_files(files: Sequence[Path], model_name: str = DEFAULT_EMBEDDER) -> li
 
 
 # --------------------------------------------------------------------------
+# Переносимый кэш эмбеддингов
+# --------------------------------------------------------------------------
+# Слитый цикл на чужой площадке (src/remote_worker.py) удаляет аудио сразу
+# после метрик: 85 ГБ вывозить неоткуда. Но FAD/KAD и CLAP считаются ПО аудио,
+# а перегенерировать его локально нельзя — на другом железе тот же сид даёт
+# другой сигнал (review_log.md, F.31). Значит эмбеддинг обязан извлекаться в
+# той же сессии, пока файл ещё есть, и уезжать вместо аудио (~1 ГБ на план).
+#
+# Кэш fadtk для этого не годится: он адресуется путём аудиофайла, а путь на
+# площадке (/kaggle/temp/...) не совпадает с локальным (D:/...). Поэтому свой
+# кэш — по ОТНОСИТЕЛЬНОМУ пути трека внутри results/audio, он одинаков везде.
+
+
+def embedding_cache_path(wav_path: Path, out_dir: Path, model_name: str = DEFAULT_EMBEDDER) -> Path:
+    """results/audio/<model>/<D>s/<prompt>/set<k>/seed<N>.wav ->
+    results/embeddings/<embedder>/<model>/<D>s/<prompt>/set<k>/seed<N>.npy"""
+    wav_path, out_dir = Path(wav_path), Path(out_dir)
+    parts = wav_path.resolve().parts
+    rel = Path(*parts[parts.index("audio") + 1:]) if "audio" in parts else Path(wav_path.name)
+    return out_dir / "embeddings" / model_name / rel.with_suffix(".npy")
+
+
+def cache_embedding(wav_path: Path, out_dir: Path, model_name: str = DEFAULT_EMBEDDER) -> Path:
+    """Извлечь эмбеддинг одного трека и положить в переносимый кэш."""
+    dst = embedding_cache_path(wav_path, out_dir, model_name)
+    if dst.exists():
+        return dst
+    emb = embed_files([wav_path], model_name)[0]
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    np.save(dst, np.asarray(emb, dtype=np.float32))   # float32: вдвое меньше везти
+    return dst
+
+
+def embed_files_cached(files: Sequence[Path], out_dir: Path,
+                       model_name: str = DEFAULT_EMBEDDER) -> list[np.ndarray]:
+    """Как embed_files, но сперва берёт готовое из переносимого кэша. Треки,
+    сгенерированные на площадке без вывода аудио, считаются только так."""
+    files = [Path(f) for f in files]
+    out, missing = {}, []
+    for f in files:
+        c = embedding_cache_path(f, out_dir, model_name)
+        if c.exists():
+            out[f] = np.asarray(np.load(c), dtype=np.float64)
+        elif f.exists():
+            missing.append(f)
+        else:
+            raise FileNotFoundError(
+                f"нет ни аудио, ни эмбеддинга для {f}: трек сгенерирован на площадке "
+                f"без --with-embeddings, а перегенерация на другом железе не "
+                f"воспроизводит сигнал (review_log.md F.31)")
+    if missing:
+        for f, e in zip(missing, embed_files(missing, model_name)):
+            out[f] = e
+    return [out[f] for f in files]
+
+
+# --------------------------------------------------------------------------
 # FAD
 # --------------------------------------------------------------------------
 

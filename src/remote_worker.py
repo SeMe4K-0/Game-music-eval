@@ -45,7 +45,7 @@ log = logging.getLogger("remote_worker")
 
 
 def build_callback(out_dir: Path, config_dir: Path, keep_audio: str, sample_per_cell: int,
-                   with_clap: bool):
+                   with_clap: bool, with_embeddings: bool = False):
     dcfg = yaml.safe_load(open(config_dir / "durations.yaml", encoding="utf-8"))
     analysis_sr = int(dcfg["analysis_sr"])
     peak = float(dcfg.get("peak_normalize_to", 0.9))
@@ -83,6 +83,17 @@ def build_callback(out_dir: Path, config_dir: Path, keep_audio: str, sample_per_
             log.warning("метрики упали на %s: %r", wav.name, e)
         if scorer is not None:
             rec["clap_score"] = scorer.score(y, sr, prompts[record["prompt_id"]], str(wav)).score
+
+        # Эмбеддинг для FAD/KAD снимается ЗДЕСЬ, пока аудио ещё не удалено:
+        # после удаления посчитать его будет уже неоткуда, а перегенерация на
+        # другом железе не воспроизводит сигнал (review_log.md, F.31).
+        if with_embeddings:
+            from .metrics import distributional as dm
+            try:
+                rec["embedding_cached"] = str(dm.cache_embedding(wav, out_dir))
+            except Exception as e:
+                rec["embedding_error"] = repr(e)
+                log.warning("эмбеддинг не снят для %s: %r", wav.name, e)
 
         metrics_path.parent.mkdir(parents=True, exist_ok=True)
         with open(metrics_path, "a", encoding="utf-8") as f:
@@ -138,6 +149,9 @@ def main():
     ap.add_argument("--sample-per-cell", type=int, default=2)
     ap.add_argument("--audio-ext", choices=[".wav", ".flac"], default=".wav")
     ap.add_argument("--with-clap", action="store_true")
+    ap.add_argument("--with-embeddings", action="store_true",
+                    help="снимать CLAP-эмбеддинги для FAD/KAD в этой же сессии; "
+                         "ОБЯЗАТЕЛЕН на площадке, откуда аудио не вывозится")
     ap.add_argument("--pack", type=Path, help="упаковать результаты в этот .tar.gz по завершении")
     a = ap.parse_args()
 
@@ -147,7 +161,11 @@ def main():
         i, n = (int(x) for x in a.shard.split("/"))
         shard = (i, n)
 
-    cb = build_callback(a.out_dir, a.config_dir, a.keep_audio, a.sample_per_cell, a.with_clap)
+    if a.keep_audio == "none" and not (a.with_clap and a.with_embeddings):
+        log.warning("keep-audio=none без --with-clap и --with-embeddings: группы 1-2 "
+                    "будут потеряны безвозвратно, аудио для них уже не восстановить")
+    cb = build_callback(a.out_dir, a.config_dir, a.keep_audio, a.sample_per_cell,
+                        a.with_clap, a.with_embeddings)
     run_experiment.run(a.config_dir, a.out_dir, a.models, a.durations, a.max_tracks, False,
                        shard, set(a.sets) if a.sets else None, on_track=cb, audio_ext=a.audio_ext)
     if a.pack:

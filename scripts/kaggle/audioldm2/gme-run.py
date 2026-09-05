@@ -58,6 +58,10 @@ sh(f"git -C {SRC} rev-parse --short HEAD")
 # AudioLDM2 падает на приватном _update_model_kwargs_for_generation у GPT2.
 sh("pip install -q 'transformers==4.50.0' 'diffusers==0.39.0' accelerate "
    "librosa soundfile pyyaml pandas")
+# fadtk тянет свой torch (2.14) и librosa 0.10 — на локальной машине он этим
+# сломал основное окружение. Ставим без зависимостей: всё нужное уже стоит.
+sh("pip install -q --no-deps fadtk laion-clap torchlibrosa msclap nnaudio "
+   "braceexpand ftfy webdataset wget h5py progressbar hypy-utils")
 
 # --- 2. Возобновление: подкладываем прошлую сессию -----------------------
 OUT.mkdir(parents=True, exist_ok=True)
@@ -109,8 +113,12 @@ for i in range(n_gpu):
     env = dict(os.environ, CUDA_VISIBLE_DEVICES=str(i), PYTHONUNBUFFERED="1")
     shard = f"--shard {i}/{n_gpu}" if n_gpu > 1 else ""
     log = WORK / f"worker{i}.log"
+    # --with-clap и --with-embeddings ОБЯЗАТЕЛЬНЫ: аудио удаляется в этой же
+    # сессии, и обе GPU-зависимые группы метрик (CLAP score и эмбеддинги для
+    # FAD/KAD) после этого посчитать будет уже не по чему — перегенерация на
+    # другом железе не воспроизводит сигнал (review_log.md, F.31).
     cmd = (f"cd {SRC} && python -m src.remote_worker --models {MODEL} "
-           f"--keep-audio sample --sample-per-cell 2 "
+           f"--keep-audio sample --sample-per-cell 2 --with-clap --with-embeddings "
            f"--out-dir {wdir} --config-dir {SRC}/configs {shard}")
     print(f"[gpu{i}] {cmd}", flush=True)
     procs.append((i, subprocess.Popen(cmd, shell=True, env=env,
@@ -139,6 +147,15 @@ for i, p, log in procs:
 # --- 6. Итог ----------------------------------------------------------------
 # Слияние результатов воркеров в общие файлы для выгрузки
 man, met = OUT / "generation_manifest.jsonl", OUT / "per_track_metrics.jsonl"
+for wdir in sorted(OUT.glob("gpu*")):          # эмбеддинги: свести в одну папку
+    src_emb = wdir / "embeddings"
+    if src_emb.exists():
+        for f in src_emb.rglob("*.npy"):
+            dst_f = OUT / "embeddings" / f.relative_to(src_emb)
+            dst_f.parent.mkdir(parents=True, exist_ok=True)
+            if not dst_f.exists():
+                shutil.copy2(f, dst_f)
+
 for name, dst in (("generation_manifest.jsonl", man), ("per_track_metrics.jsonl", met)):
     seen, lines = set(), []
     for wdir in sorted(OUT.glob("gpu*")):
