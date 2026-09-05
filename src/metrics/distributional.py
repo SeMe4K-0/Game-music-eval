@@ -69,6 +69,12 @@ def embed_files(files: Sequence[Path], model_name: str = DEFAULT_EMBEDDER) -> li
     for f in files:
         fad.cache_embedding_file(f)
     embs = fad._load_embeddings(files, concat=False)
+    # fadtk 1.1.0 при concat=False возвращает КОРТЕЖ (embeddings, files), а не
+    # просто список: без распаковки итерация доходит до списка путей и падает
+    # на np.asarray(WindowsPath). Проверено на установленной версии; более
+    # старые возвращали один список — поддерживаем оба варианта.
+    if isinstance(embs, tuple):
+        embs = embs[0]
     return [np.asarray(e, dtype=np.float64) for e in embs]
 
 
