@@ -98,6 +98,8 @@ class MusicGenBackend:
         self.sr = int(self.model.config.audio_encoder.sampling_rate)
         self.tps = int(cfg.get("tokens_per_second", 50))
         self.dtype = _dtype(cfg)
+        # Сдвиг delay pattern: выход короче запроса на (num_codebooks - 1) кадров.
+        self.delay_tokens = int(self.model.decoder.config.num_codebooks) - 1
 
     def _to_model(self, inputs):
         """Фаза 0 (2026-09-04, transformers 4.50.0): у continuation-вызова
@@ -115,10 +117,23 @@ class MusicGenBackend:
         return inputs
 
     def _gen(self, inputs, seconds: float):
+        """Запрашиваем на (num_codebooks - 1) токенов больше требуемого.
+
+        Delay pattern MusicGen сдвигает кодбуки друг относительно друга, и на
+        выходе оказывается на 3 кадра (при 4 кодбуках) меньше запрошенного:
+        1500 токенов дают 29.94 с вместо 30. Проверено запуском 2026-09-06 —
+        1500 -> 958080 отсчётов, 1503 -> ровно 960000 (30.000 с). Отсюда и
+        документированный жёсткий лимит модели в 1503 токена на 30-секундное
+        окно: он уже включает эту компенсацию.
+
+        Без неё нехватка 0.06 с запускала continuation ради трёх токенов, и
+        build_delay_pattern_mask падал с рассогласованием 500 против 501.
+        """
         import torch
+        n = int(round(seconds * self.tps)) + self.delay_tokens
         with torch.no_grad():
             out = self.model.generate(**inputs, do_sample=True, guidance_scale=3,
-                                      max_new_tokens=int(seconds * self.tps))
+                                      max_new_tokens=n)
         return out[0, 0].float().cpu().numpy()
 
     def generate(self, prompt: str, duration_s: float, seed: int):
@@ -131,7 +146,11 @@ class MusicGenBackend:
         inputs = self._to_model(self.processor(text=[prompt], padding=True, return_tensors="pt"))
         audio = self._gen(inputs, min(duration_s, native))
 
-        while len(audio) / sr < duration_s - 0.05:
+        # Продолжаем только если не хватает ЗАМЕТНОГО куска. Порог 0.05 с был
+        # меньше округления самой модели, и на D, кратных нативному окну,
+        # запускалась вырожденная continuation на три токена — она и падала.
+        # Хвост короче секунды всё равно срезается финальным truncate.
+        while duration_s - len(audio) / sr >= 1.0:
             tail = audio[-int(prompt_s * sr):]
             new_s = min(native - prompt_s, duration_s - len(audio) / sr)
             inputs = self._to_model(self.processor(audio=tail, sampling_rate=sr, text=[prompt],
