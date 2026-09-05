@@ -13,6 +13,9 @@ pyyaml
 # torchaudio
 # transformers>=4.45   # MusicGen, AudioLDM2/пайплайны через diffusers, EnCodec, CLAP
 # diffusers>=0.30       # AudioLDM2Pipeline, StableAudioPipeline
+# torchsde               # обязателен для StableAudioPipeline:
+#                        # CosineDPMSolverMultistepScheduler без него
+#                        # падает с ImportError до загрузки весов
 # audiocraft             # опционально, как альтернативный бэкенд MusicGen
 # fadtk                  # https://github.com/microsoft/fadtk — FAD, FAD-inf
 # kadtk                  # https://github.com/YoonjinXD/kadtk — KAD

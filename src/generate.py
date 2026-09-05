@@ -67,6 +67,21 @@ def _dtype(cfg: dict):
     return resolve_dtype(cfg.get("dtype", "float16"))
 
 
+def _to_numpy(audio) -> np.ndarray:
+    """Выход пайплайна -> float32 numpy на CPU.
+
+    Фаза 0 (2026-09-05): пайплайны diffusers расходятся в типе выхода.
+    AudioLDM2 отдаёт numpy, а StableAudioPipeline — torch-тензор НА CUDA, и
+    `np.asarray` на нём падает с "can't convert cuda:0 device type tensor to
+    numpy". Плюс при float16 нужно явное приведение: половинная точность в
+    numpy дальше по конвейеру метрик не нужна.
+    """
+    if hasattr(audio, "detach"):                     # torch.Tensor
+        import torch
+        audio = audio.detach().to("cpu", dtype=torch.float32).numpy()
+    return np.asarray(audio, dtype=np.float32)
+
+
 # --------------------------------------------------------------------------
 # Бэкенды
 # --------------------------------------------------------------------------
@@ -146,7 +161,7 @@ class AudioLDM2Backend:
         audio = self.pipe(prompt=prompt, audio_length_in_s=float(duration_s),
                           num_inference_steps=int(self.cfg.get("num_inference_steps", 200)),
                           generator=g).audios[0]
-        return np.asarray(audio, dtype=np.float32), self.sr
+        return _to_numpy(audio), self.sr
 
 
 class RiffusionBackend:
@@ -211,7 +226,7 @@ class StableAudioOpenBackend:
         audio = self.pipe(prompt=prompt, negative_prompt="low quality, noisy",
                           num_inference_steps=int(self.cfg.get("num_inference_steps", 100)),
                           audio_end_in_s=float(duration_s), num_waveforms_per_prompt=1, generator=g).audios[0]
-        return np.asarray(audio, dtype=np.float32), self.sr   # (2, samples)
+        return _to_numpy(audio), self.sr   # (2, samples)
 
 
 class ACEStepBackend:
