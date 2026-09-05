@@ -32,6 +32,10 @@ from pathlib import Path
 
 MODEL = os.environ.get("GME_MODEL", "audioldm2_music")
 BUDGET_MIN = int(os.environ.get("GME_BUDGET_MIN", "660"))     # 11 ч из 12, запас на упаковку
+# Дымовой прогон: несколько треков на клетку вместо полного плана. Нужен перед
+# каждой БОЕВОЙ сессией, где что-то поменялось в конвейере метрик — потерять
+# 15 минут дешевле, чем 11 часов, как это уже случилось с группами 1-2.
+MAX_TRACKS = os.environ.get("GME_MAX_TRACKS", "").strip()
 REPO = "https://github.com/SeMe4K-0/Game-music-eval.git"
 SRC = Path("/kaggle/temp/Game-music-eval")                     # вне working: не попадёт в output
 WORK = Path("/kaggle/working")
@@ -117,9 +121,10 @@ for i in range(n_gpu):
     # сессии, и обе GPU-зависимые группы метрик (CLAP score и эмбеддинги для
     # FAD/KAD) после этого посчитать будет уже не по чему — перегенерация на
     # другом железе не воспроизводит сигнал (review_log.md, F.31).
+    limit = f"--max-tracks {MAX_TRACKS}" if MAX_TRACKS else ""
     cmd = (f"cd {SRC} && python -m src.remote_worker --models {MODEL} "
            f"--keep-audio sample --sample-per-cell 2 --with-clap --with-embeddings "
-           f"--out-dir {wdir} --config-dir {SRC}/configs {shard}")
+           f"--out-dir {wdir} --config-dir {SRC}/configs {shard} {limit}")
     print(f"[gpu{i}] {cmd}", flush=True)
     procs.append((i, subprocess.Popen(cmd, shell=True, env=env,
                                       stdout=open(log, "w"), stderr=subprocess.STDOUT), log))
@@ -168,8 +173,17 @@ for name, dst in (("generation_manifest.jsonl", man), ("per_track_metrics.jsonl"
     if lines:
         dst.write_text("".join(lines), encoding="utf-8")
         print(f"слито {name}: {len(lines)} строк", flush=True)
+# Контроль конвейера метрик: без этих двух чисел сессия бессмысленна —
+# аудио удалено, и CLAP с эмбеддингами уже не восстановить (F.31).
+n_emb = len(list((OUT / "embeddings").rglob("*.npy"))) if (OUT / "embeddings").exists() else 0
+n_clap = 0
+if met.exists():
+    n_clap = sum(1 for l in open(met, encoding="utf-8") if '"clap_score"' in l)
+
 summary = {
     "model": MODEL,
+    "embeddings_saved": n_emb,
+    "tracks_with_clap": n_clap,
     "elapsed_min": round((time.time() - t_start) / 60, 1),
     "manifest_rows": sum(1 for _ in open(man, encoding="utf-8")) if man.exists() else 0,
     "metrics_rows": sum(1 for _ in open(met, encoding="utf-8")) if met.exists() else 0,
