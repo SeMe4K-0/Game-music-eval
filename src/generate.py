@@ -229,6 +229,42 @@ class StableAudioOpenBackend:
         return _to_numpy(audio), self.sr   # (2, samples)
 
 
+class StableAudio3Backend:
+    """Stable Audio 3 Small (2026). Работает НЕ через diffusers, а через
+    собственную библиотеку Stability (`stable_audio_3`), поэтому требует
+    отдельного venv — как и Riffusion.
+
+    Проверено фазой 0 (2026-09-05, RTX 3060): 0.6B параметров, 8 шагов
+    диффузии, около 1 с на трек НЕЗАВИСИМО от длительности, пик VRAM 1.74 ГБ.
+    Нативный максимум 120 с (sample_size 5 292 032 при 44 100 Гц) — покрывает
+    всю сетку D, обрезки под чужой меткой не возникает.
+
+    `truncate_output_to_duration=True` даёт точную запрошенную длительность:
+    модель считает латент фиксированного размера, а лишнее отрезает."""
+
+    def __init__(self, cfg: dict):
+        from stable_audio_3 import StableAudioModel
+        self.cfg = cfg
+        self.device = _device()
+        # model_half=True -> float16; точность берём из конфига, а не из дефолта
+        # библиотеки, чтобы она не стала скрытым фактором (см. env_info.py).
+        self.model = StableAudioModel.from_pretrained(
+            cfg.get("checkpoint_name", "small-music"), device=self.device,
+            model_half=(cfg.get("dtype", "float16") == "float16"))
+        self.sr = int(cfg.get("sample_rate", 44100))
+
+    def generate(self, prompt: str, duration_s: float, seed: int):
+        audio = self.model.generate(
+            prompt=prompt, duration=float(duration_s),
+            steps=int(self.cfg.get("num_inference_steps", 8)),
+            cfg_scale=float(self.cfg.get("cfg_scale", 1.0)),
+            seed=int(seed), truncate_output_to_duration=True)
+        a = _to_numpy(audio)
+        if a.ndim == 3:            # (batch, channels, samples) при batch_size=1
+            a = a[0]
+        return a, self.sr          # (2, samples)
+
+
 class ACEStepBackend:
     """ACE-Step v1-3.5B. Пайплайн пишет файл по save_path и не возвращает
     массив; читаем файл обратно. Значения guidance/scheduler — дефолты infer.py
@@ -264,6 +300,7 @@ _BACKENDS = {
     "riffusion": RiffusionBackend,
     "diffusers_stable_audio": StableAudioOpenBackend,
     "ace_step": ACEStepBackend,
+    "stable_audio_3": StableAudio3Backend,
 }
 
 

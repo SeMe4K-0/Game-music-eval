@@ -105,3 +105,22 @@ models:
     vram_estimate_gb: 8
     dtype: bfloat16          # родной дефолт ACE-Step; требует Ampere+ (не T4/P100)
     backend: ace_step
+
+  - id: stable_audio_3_small_music
+    hf_repo: stabilityai/stable-audio-3-small-music
+    checkpoint_name: small-music        # имя для StableAudioModel.from_pretrained
+    year: 2026
+    architecture: latent_diffusion_transformer_semantic_acoustic_ae
+    license: Stability-AI-Community-License
+    sample_rate: 44100
+    channels: 2
+    # sample_size 5 292 032 отсчёта при 44 100 Гц = ровно 120 с: нативный
+    # максимум совпадает с верхней границей сетки D, N/A-клеток не возникает.
+    native_max_duration_s: 120
+    long_duration_strategy: direct_call
+    # Всего 8 шагов диффузии — отсюда ~1 с на трек (замерено фазой 0).
+    num_inference_steps: 8
+    cfg_scale: 1.0
+    vram_estimate_gb: 1.74              # ЗАМЕРЕНО, не оценка
+    dtype: float16
+    backend: stable_audio_3
