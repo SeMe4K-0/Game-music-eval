@@ -25,6 +25,28 @@ def _load(path: Path) -> list[dict]:
     return [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
 
 
+# Ключ трека: одна клетка плана + номер набора и трека внутри неё.
+_TRACK_KEY = ("model_id", "duration_s", "prompt_id", "set_idx", "track_idx")
+
+
+def _load_latest(path: Path) -> list[dict]:
+    """Как _load, но при повторах ключа оставляет ПОСЛЕДНЮЮ запись.
+
+    per_track_metrics.jsonl дописывается, а не переписывается: догон
+    отсутствующей метрики (например, CLAP по уже сгенерированным трекам)
+    добавляет новую строку рядом со старой. Без схлопывания такие треки
+    считались бы дважды, причём доля вырожденных и все доли прохождения
+    критериев смещались бы в сторону старой, неполной записи.
+    """
+    latest = {}
+    for r in _load(path):
+        try:
+            latest[tuple(r[k] for k in _TRACK_KEY)] = r
+        except KeyError:                     # запись не про трек (пол, набор)
+            latest[len(latest)] = r
+    return list(latest.values())
+
+
 def _get(d: dict, *keys, default=np.nan):
     for k in keys:
         if not isinstance(d, dict) or k not in d:
@@ -151,7 +173,7 @@ def fmt(ci: dict, digits=3) -> str:
 
 def run(out_dir: Path, config_dir: Path) -> None:
     rule = yaml.safe_load(open(config_dir / "durations.yaml", encoding="utf-8"))["decision_rule"]
-    tracks = _load(out_dir / "per_track_metrics.jsonl")
+    tracks = _load_latest(out_dir / "per_track_metrics.jsonl")
     dist = _load(out_dir / "distributional_metrics.jsonl")
     floors = _load(out_dir / "floors.jsonl")
 
