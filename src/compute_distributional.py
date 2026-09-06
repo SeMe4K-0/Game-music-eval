@@ -18,7 +18,7 @@ from pathlib import Path
 import yaml
 
 from .metrics import distributional as dm
-from .metrics.codec_floor import split_half
+from .metrics.codec_floor import split_half, split_half_indices
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("distributional")
@@ -60,11 +60,14 @@ def run(out_dir: Path, config_dir: Path, embedder: str, n_resamples: int, crossc
         # --- полы ---
         manifest = json.load(open(ref_dir / "manifest.json", encoding="utf-8"))
         piece_of = {m["file"]: m["piece"] for m in manifest}
-        a_dir, b_dir = ref_root / f"{int(D)}s_half_A", ref_root / f"{int(D)}s_half_B"
-        if not a_dir.exists():
-            split_half(files, piece_of, a_dir, b_dir)
-        ctx_a = dm.ReferenceContext(dm.embed_files(sorted(a_dir.glob("*.wav")), embedder))
-        res = dm.evaluate_set(ctx_a, dm.embed_files(sorted(b_dir.glob("*.wav")), embedder), n_resamples)
+        # Половины берутся как ПОДМНОЖЕСТВА уже посчитанных эмбеддингов.
+        # Раньше файлы копировались в отдельные папки и эмбеддились заново —
+        # кэш fadtk привязан к пути, поэтому на референс уходило вдвое больше
+        # работы, чем нужно, и это была самая дорогая часть всего расчёта.
+        idx_a, idx_b = split_half_indices(files, piece_of)
+        log.info("пол split_half D=%.0f: половины %d и %d окон", D, len(idx_a), len(idx_b))
+        ctx_a = dm.ReferenceContext([ref_embs[i] for i in idx_a])
+        res = dm.evaluate_set(ctx_a, [ref_embs[i] for i in idx_b], n_resamples)
         with open(floors_path, "a", encoding="utf-8") as f:
             f.write(json.dumps({"duration_s": D, "floor": "split_half", "fad": res.fad, "kad": res.kad,
                                 "fad_boot": res.fad_boot, "kad_boot": res.kad_boot}) + "\n")

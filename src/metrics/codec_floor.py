@@ -36,6 +36,24 @@ def _link_or_copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
+def split_half_indices(files: Iterable[Path], piece_of: dict[str, str]) -> tuple[list[int], list[int]]:
+    """Те же половины, что и split_half, но БЕЗ копирования файлов — только
+    номера позиций в исходном списке.
+
+    Копирование в отдельные папки заставляло считать эмбеддинги повторно: кэш
+    fadtk привязан к пути файла, а половины — это те же самые аудиофайлы под
+    новыми именами. На референсе это ровно удвоенная работа, самая дорогая
+    часть расчёта FAD. Хеш партитуры и правило чётности совпадают со
+    split_half, поэтому разбиение то же самое.
+    """
+    idx_a: list[int] = []
+    idx_b: list[int] = []
+    for i, f in enumerate(files):
+        h = int(hashlib.md5(piece_of[Path(f).name].encode()).hexdigest(), 16)
+        (idx_a if h % 2 == 0 else idx_b).append(i)
+    return idx_a, idx_b
+
+
 def split_half(files: Iterable[Path], piece_of: dict[str, str], out_a: Path, out_b: Path) -> tuple[int, int]:
     """Делит референс на две половины по ПАРТИТУРАМ (piece_of: имя файла ->
     id партитуры), чтобы окна одной партитуры не попали в обе половины."""

@@ -193,4 +193,15 @@ summary = {
 sz = sum(f.stat().st_size for f in OUT.rglob("*") if f.is_file()) / 1024 ** 3
 summary["output_gb"] = round(sz, 2)
 (WORK / "run_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
+
+# Всё, кроме сводки, кладём в ОДИН архив и убираем исходные файлы из вывода.
+# Kaggle API качает вывод пофайлово, и на полутора тысячах мелких .npy
+# соединение рвётся с SSL: UNEXPECTED_EOF (проверено на первой сессии —
+# доехало 2 файла из 1291). Один архив забирается одним запросом.
+import tarfile
+arc = WORK / f"gme_{MODEL}_results.tar.gz"
+with tarfile.open(arc, "w:gz") as tar:
+    tar.add(OUT, arcname="results")
+print(f"упаковано: {arc} ({arc.stat().st_size / 1024**2:.1f} МБ)", flush=True)
+shutil.rmtree(OUT, ignore_errors=True)
 print("\n" + json.dumps(summary, ensure_ascii=False, indent=1), flush=True)
