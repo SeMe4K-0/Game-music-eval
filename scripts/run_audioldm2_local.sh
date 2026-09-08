@@ -51,8 +51,30 @@ while true; do
     n=$(gen_running); [ "${n:-0}" = "0" ] && break
     sleep 120
 done
-sleep 30
-say "audioldm2: карта свободна, старт"
+
+# Пауза на остывание перед следующими сутками нагрузки. Ждём не по таймеру, а
+# по факту: карта считается остывшей, когда температура опустилась ниже порога.
+# Нижняя граница по времени всё равно выдерживается — датчик показывает ядро,
+# а остыть должны ещё и цепи питания с памятью, у них инерция больше.
+COOL_C=${GME_COOL_C:-50}
+COOL_MIN=${GME_COOL_MIN:-30}
+say "перерыв: минимум ${COOL_MIN} мин и до ${COOL_C} °C"
+t_start=$SECONDS
+while true; do
+    t=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader 2>/dev/null | tr -cd '0-9')
+    mins=$(( (SECONDS - t_start) / 60 ))
+    if [ "$mins" -ge "$COOL_MIN" ] && [ "${t:-99}" -le "$COOL_C" ]; then
+        say "перерыв окончен: ${mins} мин, ${t} °C"
+        break
+    fi
+    if [ "$mins" -ge 120 ]; then          # страховка: не ждать вечно
+        say "перерыв окончен по лимиту 2 ч: ${t} °C"
+        break
+    fi
+    [ $(( mins % 10 )) -eq 0 ] && say "  остывает: ${mins} мин, ${t} °C"
+    sleep 60
+done
+say "audioldm2: старт"
 
 # Генерация идёт обычным run_experiment: аудио остаётся на диске, метрики
 # считаются отдельным шагом. Это не Kaggle — места хватает, а сохранённое
