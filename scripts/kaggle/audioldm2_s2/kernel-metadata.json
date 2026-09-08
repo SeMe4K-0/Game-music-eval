@@ -1,0 +1,14 @@
+{
+  "id": "seme4k0/gme-audioldm2-s2",
+  "title": "gme-audioldm2-s2",
+  "code_file": "gme-run.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": ["seme4k0/gme-audioldm2"],
+  "model_sources": []
+}

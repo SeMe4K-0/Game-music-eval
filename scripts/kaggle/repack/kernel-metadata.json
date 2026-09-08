@@ -9,6 +9,8 @@
   "enable_internet": false,
   "dataset_sources": [],
   "competition_sources": [],
-  "kernel_sources": ["seme4k0/gme-audioldm2"],
+  "kernel_sources": [
+    "seme4k0/gme-audioldm2-s2"
+  ],
   "model_sources": []
 }
